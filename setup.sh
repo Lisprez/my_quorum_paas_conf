@@ -39,12 +39,14 @@ function create_nodes_directory() {
 # create static_nodes.json file for every node
 # @1 \the number of nodes
 function create_static_nodes_json() {
-    local_node_num=$1
+    local_node_ips=$1
+    local_node_num=$2
     echo_green '[2] Create Enodes and store them in static-nodes.json'
 
     echo "[" > static-nodes.json
 
-    for node_index in $(seq 1 $local_node_num); do
+    node_index=1
+    for node_ip in ${local_node_ips[*]}; do
         qd=qdata_$node_index
 
         # Generate the node's Enode
@@ -52,7 +54,8 @@ function create_static_nodes_json() {
 
         # Append enode to the static-nodes.json file
         sep=`[[ $node_index < $local_node_num ]] && echo ","`
-        echo '  "enode://'$enode'@'$ip':30303?discport=0"'$sep >> static-nodes.json
+        echo '  "enode://'$enode'@'$node_ip':30303?discport=0"'$sep >> static-nodes.json
+        let node_index++
     done
     echo "]" >> static-nodes.json
 }
@@ -105,24 +108,28 @@ EOF
 # create node list for tm.conf and finish configure all the nodes
 # @1 \the ip array that contains all the ips of all nodes
 function finish_configure_nodes() {
-    local_ips=$1
+    local_val=$1
+    _ips=()
+    local_n=0
+    for elem in ${local_val[*]}; do
+        _ips[$local_n]=$elem
+        let local_n++
+    done
+
     nodelist=
     n=1
-    for ip in ${local_ips[@]}
+    for ip in ${_ips[*]}
     do
-        sep=`[[ $ip != ${local_ips[0]} ]] && echo ","`
+        sep=`[[ $ip != ${_ips[0]} ]] && echo ","`
         nodelist=${nodelist}${sep}'"http://'${ip}':9000/"'
         let n++
     done
 
     echo_green '[4] Creating Quorum keys and finishing configuration.'
-
     n=1
-    for ip in ${local_ips[*]}
+    for ip in ${_ips[*]}
     do
         qd=qdata_$n
-        
-        pwd
 
         cat templates/tm.conf \
             | sed "s/_NODEIP_/$ip/g" \
@@ -170,12 +177,12 @@ EOF
     node_$n:
         image: $image
         volumes:
-        - './$qd:/qdata'
+            - './$qd:/qdata'
         networks:
             quorum_net:
                 ipv4_address: '$ip'
-                ports:
-                - ${ports[$(expr $n - 1)]}:8545
+        ports:
+            - ${ports[$(expr $n - 1)]}:8545
         user: '$uid:$gid'
 EOF
             let n++
@@ -224,18 +231,19 @@ for node in ${nodes[*]}; do
 done
 
 
-printf "%-20s %-15s" image: $image
+printf " %-20s %-15s" image: $image
 printf "\n"
-printf "%-20s %-15s" network: ${args[1]}
+printf " %-20s %-15s" network: ${args[1]}
 printf "\n"
-printf "%-20s %-15s" nodes_number: $nodes_num
+printf " %-20s %-15s" nodes_number: $nodes_num
 printf "\n"
-printf "%-20s %-15s" ips: ${ips[*]}
+printf " %-20s %-15s" ips: ${ips[*]}
 printf "\n"
-printf "%-20s %-15s" ports: ${ports[*]}
+printf " %-20s %-15s" ports: ${ports[*]}
+printf "\n"
 
 create_nodes_directory $nodes_num
-create_static_nodes_json $nodes_num
-create_account_and_genesis $nodes_num
+create_static_nodes_json "${ips[*]}" $nodes_num
+create_account_and_genesis $nodes_num 
 finish_configure_nodes "${ips[*]}"
 create_compose_file $image "${ips[*]}" "${ports[*]}" $network_segment
