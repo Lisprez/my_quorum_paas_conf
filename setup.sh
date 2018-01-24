@@ -192,11 +192,8 @@ EOF
 
 networks:
     quorum_net:
-        driver: bridge
-        ipam:
-            driver: default
-            config:
-                - subnet: $local_subnet
+        external:
+            name: "$subnet"
 EOF
 }
 
@@ -213,13 +210,14 @@ fi
 
 image=${args[0]}
 network_segment=${args[1]}
-nodes_num=$(expr $args_len - 2)
+network_gateway=${args[2]}
+nodes_num=$(expr $args_len - 3)
 nodes=()
 ips=()
 ports=()
 
 for index in $(seq 0 $(expr $nodes_num - 1)); do
-    nodes[$index]=${args[$(expr $index + 2)]}
+    nodes[$index]=${args[$(expr $index + 3)]}
 done
 
 n=0
@@ -233,7 +231,9 @@ done
 
 printf " %-20s %-15s" image: $image
 printf "\n"
-printf " %-20s %-15s" network: ${args[1]}
+printf " %-20s %-15s" network_seg: ${args[1]}
+printf "\n"
+printf " %-20s %-15s" network_gate: ${args[2]}
 printf "\n"
 printf " %-20s %-15s" nodes_number: $nodes_num
 printf "\n"
@@ -242,8 +242,45 @@ printf "\n"
 printf " %-20s %-15s" ports: ${ports[*]}
 printf "\n"
 
+
+## prepare the network environment
+n=1
+middle_content=`docker network ls | awk '{print $1}'`
+
+catch_content=""
+subnet=""
+
+#docker network ls | awk '{print $1}' | 
+while read line
+ do 
+	 echo $line
+	 if [ "$line" == "NETWORK" ] 
+	 then
+		echo ""
+	 else
+		catch_content=`docker network inspect $line | grep $network_segment`
+		if [ "$catch_content" == "" ]
+		then
+			let n++
+		else
+			break
+		fi
+	 fi
+ done <<< $middle_content
+
+
+ if [ "$catch_content" == "" ]
+ then
+	# create here
+	subnet=`date +%Y%m%d%H%M%S`
+     	docker network create --driver=bridge --subnet=$network_segment --gateway=$network_gateway $subnet
+ else
+	# get the name
+	subnet=`docker network ls | awk '{print $2}' | sed -n "$(expr $n + 1)"p`
+ fi
+
 create_nodes_directory $nodes_num
 create_static_nodes_json "${ips[*]}" $nodes_num
 create_account_and_genesis $nodes_num 
 finish_configure_nodes "${ips[*]}"
-create_compose_file $image "${ips[*]}" "${ports[*]}" $network_segment
+create_compose_file $image "${ips[*]}" "${ports[*]}" $subnet
