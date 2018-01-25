@@ -164,7 +164,7 @@ function create_compose_file() {
     local_subnet=$4
 
     cat > docker-compose.yml <<EOF
-version: '2'
+version: '3'
 services:
 EOF
 
@@ -184,6 +184,7 @@ EOF
         ports:
             - ${ports[$(expr $n - 1)]}:8545
         user: '$uid:$gid'
+        container_name: '$ip'
 EOF
             let n++
     done
